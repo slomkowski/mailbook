@@ -15,7 +15,7 @@ else
 fi
 
 #XFSN=`cat $SCRIPTDIR/x-fsn.txt`
-XFSN=`cat '/var/local/java/prefs/cookies/Cookie__x-fsn_WITH_DOMAIN__$$cookie.store.domains.cookie' | head -n 1 | cut -d '=' -f 2`
+XFSN=`cat '/var/local/java/prefs/cookies/Cookie__x-fsn_WITH_DOMAIN__amazon.com.cookie' | head -n 1 | cut -d '=' -f 2`
 USER_AGENT='Mozilla/4.0 (compatible; Linux 2.6.22) NetFront/3.4 Kindle/2.5 (screen 824x1200; rotate)'
 
 export http_proxy='fints-g7g.amazon.com:80'
