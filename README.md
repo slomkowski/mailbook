@@ -5,3 +5,5 @@ Custom version of 'Send to Kindle' feature for Kindle 3 &amp; DX. It consists of
 
 Mailbook requires a shell account with Unix mailbox, HTTP server and background processes support. 
 
+Beta support for collections.
+
