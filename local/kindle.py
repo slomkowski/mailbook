@@ -121,10 +121,10 @@ def convertFiles(fileList, outputDir):
 def updateMetadataFile(metadataFile, filesList, restartFlag, collection = None, collectionExact = False):
 	"""Reads metadata file and applies metadata."""
 
-	metadata = configparser.RawConfigParser()
+	metadata = configparser.SafeConfigParser()
 	metadata.read(metadataFile)
 
-	timestamp = time.strftime("%Y-%m-%d_%H:%M:%S", time.localtime())
+	timestamp = time.strftime("%Y-%m-%d_%H:%M:%S", time.gmtime())
 
 	if collection:
 		if not collectionExact:
@@ -139,15 +139,15 @@ def updateMetadataFile(metadataFile, filesList, restartFlag, collection = None, 
 			print("Creating collection: " + collection)
 
 	else:
-		collection = "DEFAULT"
+		collection = "___NO_COLLECTION___"
 
 	if not metadata.has_section(collection):
 		metadata.add_section(collection)
 
 	if restartFlag:
 		print("Applying restart flag.")
-		metadata['__SPECIAL__'] = {}
-		metadata['__SPECIAL__']['RestartTimeStamp'] = timestamp;
+		metadata['___SPECIAL___'] = {}
+		metadata['___SPECIAL___']['RestartTimeStamp'] = timestamp;
 
 	for file in filesList:
 		metadata.set(collection, file, timestamp)
@@ -156,7 +156,7 @@ def updateMetadataFile(metadataFile, filesList, restartFlag, collection = None, 
 	    metadata.write(configfile)
 
 	# return proposed directory name for collection
-	if collection == "DEFAULT":
+	if collection == "___NO_COLLECTION___":
 		return ''
 	else:
 		return convertToFileName(collection)
@@ -208,8 +208,10 @@ filesToUpdate = convertFiles(fileList, outputDir = tempDir)
 up = lambda coll, exact: updateMetadataFile(os.path.join(tempDir, metadataFileName), filesToUpdate, args.restart, coll, exact)
 if args.collection_exact:
 	collectionDirectory = up(args.collection_exact[0], True)
-else:
+elif args.collection:
 	collectionDirectory = up(args.collection[0], False)
+else:
+	collectionDirectory = up(None, False)
 
 # if collection is specified, copy all files to new folder within tempDir. It's needed to copy it via SSH later.
 if collectionDirectory:
