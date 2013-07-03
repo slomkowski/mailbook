@@ -1,3 +1,5 @@
+on_kindle/library-update.ini
+
 *.py[cod]
 
 # C extensions
