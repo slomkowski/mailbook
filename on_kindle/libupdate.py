@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
 Mailbook - equivalent for 'Send to Kindle' feature. Script for Kindle 2, 3 and DX. You need Python 2.7 installed
@@ -20,6 +20,7 @@ import datetime
 import time
 import hashlib
 import json
+import subprocess
 
 __version__ = '1.1'
 __author__ = 'Michał Słomkowski'
@@ -29,14 +30,19 @@ __copyright__ = 'GNU GPL v.3.0'
 userAgent = 'Mozilla/4.0 (compatible; Linux 2.6.22) NetFront/3.4 Kindle/2.5 (screen 824x1200; rotate)'  # for Kindle DX
 validFileExtensions = ('.txt', '.mobi', '.azw', '.azw2', '.pdf')
 
-userDirectory = '/shared/kindle'  # /mnt/us/'
+userDirectory = '/mnt/us/'
 localLibraryPath = os.path.join(userDirectory, 'documents')
 jsonFilePath = os.path.join(userDirectory, "system/collections.json")
 metadataFileName = 'FILELIST'
-configFileName = 'library-update.ini'
+configFileName = 'libupdate.ini'
+useProxy = True
 
 # for development only
-useProxy = False
+DEVEL = False
+
+if DEVEL:
+	useProxy = False
+	userDirectory = '/shared/kindle'
 
 # CODE
 
@@ -105,7 +111,6 @@ def getRemoteFile(relativePath):
 
 # for collections
 
-
 def computeHashEntry(fileName):
 	"""
 	Function calculates the document entry in JSON file. The entry is a SHA1 hash of the file path with '#' or '*' at the beginning.
@@ -164,6 +169,9 @@ def loadJsonFile(collections):
 	with open(jsonFilePath, "w") as fp:
 		json.dump(js, fp)
 		fp.write("\n")
+
+def parseDate(dateString):
+	return datetime.datetime.strptime(dateString, "%Y-%m-%d_%H:%M:%S")
 
 def getCollections(metadataCollections):
 	"""Iterates over directory tree in 'documents' directory and metadata file. Creates the collection list from directories.
@@ -233,7 +241,7 @@ for collection in [sec for sec in newMetadata.sections() if sec != '___SPECIAL__
 		if not oldMetadata.has_option(collection, file):
 			fileList.append(file)
 		else:
-			dateParse = lambda metadata: datetime.datetime.strptime(metadata.get(collection, file), "%Y-%m-%d_%H:%M:%S")
+			dateParse = lambda metadata: parseDate(metadata.get(collection, file))
 			if dateParse(newMetadata) > dateParse(oldMetadata):
 				fileList.append(file)
 
@@ -265,6 +273,18 @@ for collection, collDir, fileList in filesToDownloadList:
 	if len(newMetadata.options(collection)) == 0:
 		newMetadata.remove_section(collection)
 
+# check if reboot was selected
+def checkRebootFlag():
+	try:
+		newDate = parseDate(newMetadata.get("___SPECIAL___", "RestartTimeStamp"))
+	except:
+		return False
+	try:
+		oldDate = parseDate(oldMetadata.get("___SPECIAL___", "RestartTimeStamp"))
+	except:
+		return True
+	return newDate > oldDate
+
 # save new metadata
 try:
 	with open(os.path.join(localLibraryPath, metadataFileName), 'w') as file:
@@ -287,3 +307,12 @@ except IOError:
 
 print("")
 print("Collections file saved.")
+
+if checkRebootFlag() and not args.no_reboot:
+	print("Rebooting system...")
+	subprocess.call(("reboot"))
+else:
+	# call library refreshing
+	print("Refreshing library...")
+	subprocess.call("dbus-send --system /default com.lab126.powerd.resuming int32:1".split())
+

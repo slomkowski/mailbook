@@ -25,7 +25,7 @@ __copyright__ = 'GNU GPL v.3.0'
 
 # CONFIG
 
-remotePath = ''
+remotePath = '#### INSERT URL TO YOUR LIBRARY ON SHELL ACCOUNT ####'
 metadataFileName = "FILELIST"
 
 # Configuration of the converter to .mobi format. Present setting is for ebook-convert from Calibre.
