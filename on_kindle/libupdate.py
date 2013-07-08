@@ -47,10 +47,11 @@ if DEVEL:
 # CODE
 
 def convertToFileName(original):
-	"""Removes spaces and special characters from the input string to create a nice file name."""
+	"""Removes spaces and special characters from the input string to create a nice file name.
+	"""
 	# changes languages-specific characters
-	uniString = unicode(original, 'utf-8', 'ignore')
-	out = unicodedata.normalize('NFKD', uniString)
+	# uniString = unicode(original, 'utf-8', 'ignore')
+	out = unicodedata.normalize('NFKD', original)
 	# change spaces
 	out = re.sub(" ", "_", out)
 	out = re.sub(r'[^\.\w\d\-]', '', out)
@@ -60,10 +61,11 @@ def convertToFileName(original):
 def getCollectionNameFromDirectory(directoryName):
 	name = directoryName.replace("_", " ")
 	name = name[0].upper() + name[1:]
-	return name
+	return unicode(name)
 
 def getConfiguration(configFile = None):
-	"""Looks for configuration file and returns ConfigParser object."""
+	"""Looks for configuration file and returns ConfigParser object.
+	"""
 	CONFIG_PATH = [os.path.dirname(__file__), userDirectory, localLibraryPath, "."]
 	CONFIG_PATH = [os.path.realpath(os.path.join(directory, configFileName)) for directory in CONFIG_PATH]
 	if configFile:
@@ -85,7 +87,8 @@ def getConfiguration(configFile = None):
 	return conf
 
 def getXfsn(cookieFilePath):
-	"""Reads cookie file and returns XFSN string."""
+	"""Reads cookie file and returns XFSN string.
+	"""
 	try:
 		with open(cookieFilePath) as file:
 			xfsn = re.search(r'x-fsn\s*=\s*(.+)', file.read()).group(1)
@@ -99,6 +102,8 @@ def getXfsn(cookieFilePath):
 	return xfsn
 
 def getRemoteFile(relativePath):
+	"""Downloads file from remote HTTP server using defined proxy. Takes relative path as an argument.
+	"""
 	if useProxy:
 		os.environ['http_proxy'] = CONF('http_proxy')
 	url = CONF('remote_library') + "/" + relativePath
@@ -108,8 +113,6 @@ def getRemoteFile(relativePath):
 	print("* Downloading: " + url)
 	resp = urllib2.urlopen(request)
 	return resp
-
-# for collections
 
 def computeHashEntry(fileName):
 	"""
@@ -145,7 +148,8 @@ def computeHashEntry(fileName):
 	return hashEntry
 
 def printCollections(collections, displayFiles = False):
-	"Displays the content of directory tree and the number of documents in each collection."
+	"""Displays the content of directory tree and the number of documents in each collection.
+	"""
 	overallItems = 0
 	for name, files in collections.items():
 		overallItems += len(files)
@@ -155,20 +159,40 @@ def printCollections(collections, displayFiles = False):
 				print("  - %s" % file)
 	print(str(overallItems) + " documents in the library.")
 
-def loadJsonFile(collections):
-	"Generates collections.json file. Loads the original collection if specified."
+def saveToJsonFile(collections, preserveColls):
+	"""Generates collections.json file. Loads the original collection if specified.
+	"""
 	global jsonFilePath
 
+	changed = False
+
+	oldJson = {}
 	js = {}
+	preserveColls = True
+	with open(jsonFilePath, 'r') as fp:
+		try:
+			if preserveColls:
+				js = json.load(fp)
+				fp.seek(0, 0)
+			oldJson = json.load(fp)
+		except ValueError:
+			pass
+
 	for colName, colFiles in collections.items():
 		colName = colName + "@en-US"
-		js[colName] = {}
-		js[colName]["lastAccess"] = int(time.time() * 1000)
-		js[colName]["items"] = [computeHashEntry(fileName) for fileName in colFiles ]
+		try:
+		 	_dummy = js[colName]["lastAccess"]
+		except KeyError:
+			changed = True
+			js[colName] = {}
+		 	js[colName]["lastAccess"] = int(time.time() * 1000)
+		js[colName]["items"] = map(computeHashEntry, colFiles)
 
 	with open(jsonFilePath, "w") as fp:
-		json.dump(js, fp)
+		json.dump(js, fp, sort_keys = True)
 		fp.write("\n")
+
+	return (js != oldJson) or changed
 
 def parseDate(dateString):
 	return datetime.datetime.strptime(dateString, "%Y-%m-%d_%H:%M:%S")
@@ -186,7 +210,7 @@ def getCollections(metadataCollections):
 	def makeCollName(dirName):
 		for collName, collDir in metadataCollections:
 			if collDir == dirName:
-				return collName
+				return unicode(collName)
 		return getCollectionNameFromDirectory(dirName)
 
 	collections = {}
@@ -200,81 +224,50 @@ def getCollections(metadataCollections):
 		collections[collName] = fileList
 	return collections
 
-intro = "Mailbook " + __version__ + " " + __author__
-description = intro + """. Script for Kindle."""
+def generateFilesToDownloadList(oldMetadata, newMetadata):
+	"""Takes two ConfigParser objects: old and new metadata and returns the tuple of overall number of files
+	and list containing (collection name, collection directory, list of files in collection to download).
+	"""
 
-parser = argparse.ArgumentParser(description = description)
-
-parser.add_argument("-n", "--no-reboot", action = 'store_true', help = "prevent Kindle from rebooting after update")
-parser.add_argument("-g", "--generate", action = 'store_true', help = """don't download updates, generate collections
-from the local directory tree then reboot""")
-parser.add_argument("-c", "--config", nargs = 1, help = "uses specified configuration file")
-
-args = parser.parse_args()
-
-print(intro)
-
-config = getConfiguration(args.config)
-
-CONF = lambda key: config.get('DEFAULT', key)
-
-xfsn = getXfsn(CONF('cookie_file'))
-
-newMetadata = ConfigParser.SafeConfigParser()
-oldMetadata = ConfigParser.SafeConfigParser()
-
-try:
-	newMetadata.readfp(getRemoteFile(metadataFileName))
-except Exception as exp:
-	print >> sys.stderr, ("Could not download metadata file: " + str(exp))
-	sys.exit(1)
-
-oldMetadata.read(os.path.join(localLibraryPath, metadataFileName))
-
-# generate list of files to download
-filesToDownloadList = []
-
-filesToDownloadCounter = 0
-for collection in [sec for sec in newMetadata.sections() if sec != '___SPECIAL___']:
 	fileList = []
-	for file in newMetadata.options(collection):
-		if not oldMetadata.has_option(collection, file):
-			fileList.append(file)
-		else:
-			dateParse = lambda metadata: parseDate(metadata.get(collection, file))
-			if dateParse(newMetadata) > dateParse(oldMetadata):
-				fileList.append(file)
 
-	if len(fileList) > 0:
-		filesToDownloadList.append((collection, convertToFileName(collection) if collection != '___NO_COLLECTION___' else '', fileList))
-		filesToDownloadCounter += len(fileList)
+	counter = 0
+	for collection in [sec for sec in newMetadata.sections() if sec != '___SPECIAL___']:
+		list = []
+		for file in newMetadata.options(collection):
+			if not oldMetadata.has_option(collection, file):
+				list.append(file)
+			else:
+				dateParse = lambda metadata: parseDate(metadata.get(collection, file))
+				if dateParse(newMetadata) > dateParse(oldMetadata):
+					list.append(file)
 
-if len(filesToDownloadList) > 0:
-	print("Trying to download %d files..." % filesToDownloadCounter)
-else:
-	print("No files to download.")
+		if len(list) > 0:
+			fileList.append((collection, convertToFileName(collection) if collection != '___NO_COLLECTION___' else '', list))
+			counter += len(list)
 
-# download files and create directories if needed
-for collection, collDir, fileList in filesToDownloadList:
-	if collDir != '' and not os.path.exists(os.path.join(localLibraryPath, collDir)):
-		print("Creating directory for '" + collDir + "'")
-		os.makedirs(os.path.join(localLibraryPath, collDir))
-	for fileName in fileList:
-		try:
-			partUrl = collDir + "/" + fileName
-			downloaded = getRemoteFile(partUrl)
-			with open(os.path.join(localLibraryPath, collDir, fileName), 'wb') as local_file:
-				local_file.write(downloaded.read())
-		except Exception as exp:
-			print >> sys.stderr, ("Could download %s file: %s" % (partUrl, str(exp)))
-			print >> sys.stderr, ("Omitting.")
-			# remove entry about file in order to download it later
-			newMetadata.remove_option(collection, fileName)
-	if len(newMetadata.options(collection)) == 0:
-		newMetadata.remove_section(collection)
+	return (counter, fileList)
+
+def parseCommandLineArgs():
+	"""Constructs help message, parses commandline arguments and returns the object containing them.
+	"""
+
+	description = "Script for Kindle."
+
+	parser = argparse.ArgumentParser(description = description)
+
+	parser.add_argument("-n", "--no-reboot", action = 'store_true', help = "prevent Kindle from rebooting after update")
+	parser.add_argument("-g", "--generate", action = 'store_true', help = """don't download updates, generate collections
+	from the local directory tree then reboot""")
+	parser.add_argument("-c", "--config", nargs = 1, help = "uses specified configuration file")
+
+	return parser.parse_args()
 
 # check if reboot was selected
-def checkRebootFlag():
+def checkRebootFlag(oldMetadata, newMetadata):
+	"""Takes two ConfigParser objects: old and new metadata and returns True if reboot was sheduled.
+	"""
+
 	try:
 		newDate = parseDate(newMetadata.get("___SPECIAL___", "RestartTimeStamp"))
 	except:
@@ -285,34 +278,101 @@ def checkRebootFlag():
 		return True
 	return newDate > oldDate
 
-# save new metadata
-try:
-	with open(os.path.join(localLibraryPath, metadataFileName), 'w') as file:
-		newMetadata.write(file)
-except IOError as exp:
-	print >> sys.stderr, ("Could not write updated metadata file: " + str(exp))
-	sys.exit(1)
+# MAIN
+
+intro = "Mailbook " + __version__ + " " + __author__
+print(intro)
+
+args = parseCommandLineArgs()
+
+config = getConfiguration(args.config)
+
+CONF = lambda key: config.get('DEFAULT', key)
+
+# read actual local metadata
+oldMetadata = ConfigParser.SafeConfigParser()
+newMetadata = ConfigParser.SafeConfigParser()
+
+oldMetadata.read(os.path.join(localLibraryPath, metadataFileName))
+
+if not args.generate:
+	xfsn = getXfsn(CONF('cookie_file'))
+
+	# get new metadata from remote location
+	try:
+		newMetadata.readfp(getRemoteFile(metadataFileName))
+	except Exception as exp:
+		print >> sys.stderr, ("Could not download metadata file: " + str(exp))
+		sys.exit(1)
+
+	# compare old and new metadata and find files to download
+	filesToDownloadCounter, filesToDownloadList = generateFilesToDownloadList(oldMetadata, newMetadata)
+
+	if filesToDownloadCounter > 0:
+		print("Trying to download %d files..." % filesToDownloadCounter)
+	else:
+		print("No files to download.")
+
+	# Download files and create directories if needed.
+	for collection, collDir, fileList in filesToDownloadList:
+		if collDir != '' and not os.path.exists(os.path.join(localLibraryPath, collDir)):
+			print("Creating directory for '" + collDir + "'")
+			os.makedirs(os.path.join(localLibraryPath, collDir))
+		for fileName in fileList:
+			try:
+				partUrl = collDir + "/" + fileName
+				downloaded = getRemoteFile(partUrl)
+				with open(os.path.join(localLibraryPath, collDir, fileName), 'wb') as local_file:
+					local_file.write(downloaded.read())
+			except Exception as exp:
+				print >> sys.stderr, ("Could download %s file: %s" % (partUrl, str(exp)))
+				print >> sys.stderr, ("Omitting.")
+				# remove entry about file in order to download it later
+				newMetadata.remove_option(collection, fileName)
+		if len(newMetadata.options(collection)) == 0:
+			newMetadata.remove_section(collection)
+
+	# replace local metadata with new one
+	try:
+		with open(os.path.join(localLibraryPath, metadataFileName), 'w') as file:
+			newMetadata.write(file)
+	except IOError as exp:
+		print >> sys.stderr, ("Could not write updated metadata file: " + str(exp))
+		sys.exit(1)
 
 # generate collection - combine data from config file and directory tree
-newCollections = getCollections([sec for sec in newMetadata.sections() if not re.match(r'___\w+___', sec)])
+collectionsList = lambda metadata: [sec.decode('utf-8') for sec in metadata.sections() if not re.match(r'___\w+___', sec)]
 
+if not args.generate:
+	newCollections = getCollections(collectionsList(newMetadata))
+else:
+	newCollections = getCollections(collectionsList(oldMetadata))
+
+print("Collections from directory structure:")
 printCollections(newCollections)
-# TODO parse restart, collection generating and refresh
+
+preserveExistingCollections = CONF('preserve_existing_collections')
+if preserveExistingCollections:
+	print("Preserving existing collections.")
 
 try:
-	loadJsonFile(newCollections)
+	jsonChanged = saveToJsonFile(newCollections, preserveExistingCollections)
 except IOError:
 	print("Error by writing 'collections.json' file. Aborting.")
 	sys.exit(1)
 
 print("")
-print("Collections file saved.")
+if jsonChanged:
+	print("Collections file saved.")
+else:
+	print("No changes in collections.")
 
-if checkRebootFlag() and not args.no_reboot:
+# don't reboot if collections don't changed
+if (checkRebootFlag(oldMetadata, newMetadata) or args.generate) and not args.no_reboot and jsonChanged:
 	print("Rebooting system...")
-	subprocess.call(("reboot"))
+	if not DEVEL:
+		subprocess.call(("reboot"))
 else:
 	# call library refreshing
-	print("Refreshing library...")
+	print("Refreshing library.")
 	subprocess.call("dbus-send --system /default com.lab126.powerd.resuming int32:1".split())
-
