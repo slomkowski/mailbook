@@ -30,7 +30,7 @@ metadataFileName = "FILELIST"
 
 # Configuration of the converter to .mobi format. Present setting is for ebook-convert from Calibre.
 mobiConverter = {
-		'command' : 'ebook-convert %%OLD_NAME%% %%NEW_NAME%%',
+		'command' : 'ebook-convert @@OLD_NAME@@ @@NEW_NAME@@',
 		# TODO check values_success
 		'values_success' : (0, 1),
 		# Kindlegen needs only filename, without full path as the output file. Use basename in this case.
@@ -106,8 +106,8 @@ def convertFiles(fileList, outputDir):
 			print('* ' + os.path.basename(name) + " > " + newName + "  || Conversion ...")  # no newline
 			sys.stdout.flush()
 
-			command = re.sub(r'%%OLD_NAME%%', name, mobiConverter['command'])
-			command = re.sub(r'%%NEW_NAME%%', mobiConverter['output_file'](os.path.join(outputDir, newName)), command)
+			command = re.sub(r'@@OLD_NAME@@', name, mobiConverter['command'])
+			command = re.sub(r'@@NEW_NAME@@', mobiConverter['output_file'](os.path.join(outputDir, newName)), command)
 
 			with open("/dev/null", "w") as devNull:
 				ret = subprocess.call(command.split(), stdout = devNull, stderr = devNull)

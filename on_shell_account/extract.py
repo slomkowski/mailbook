@@ -30,13 +30,26 @@ configFileName = "extract.ini"
 # for debug & development
 disableConversion = False
 disableMailboxClearing = False
+manualStart = True
 
 __version__ = '1.1'
 __author__ = 'Michał Słomkowski'
 __copyright__ = 'GNU GPL v.3.0'
 
 # CODE
-import mailbox, re, unicodedata, os, configparser, time, subprocess, shutil, tempfile, fcntl, signal, sys, base64
+import mailbox
+import re
+import unicodedata
+import os
+import configparser
+import time
+import subprocess
+import shutil
+import tempfile
+import fcntl
+import signal
+import sys
+import email.header
 
 def convertToFileName(originalFileName):
 	"""Removes spaces and special characters from the file name."""
@@ -131,34 +144,37 @@ def checkAndGetAttachments(mailboxPath, validSenders = None):
 	# initialize mailbox
 	mb = mailbox.Maildir(mailboxPath)
 
-	validSubject = re.compile(r'^\s*(kindle)(?P<reboot_flag>-reboot)?(:\s*(?P<collection>\w+))?\s*$', re.I)
-	messages = mb.keys()
+	validSubject = re.compile(r'^\s*(kindle)(?P<reboot_flag>-reboot)?(:\s*(?P<collection>[\w\d\- ]+))?\s*$', re.I)
+	emailFromHeader = re.compile(r'<([\w\d\-\.]+@[\w\d\-\.]+)>', re.I)
 
 	# get the messages with valid subject
-	# messages = [ (msg, mb.get(msg)) for msg in mb.keys() if validSubject.match(mb.get(msg)['Subject']) ]
-	#messages = filter(lambda msg: validSubject.match(mb.get(msg)['Subject']), mb.keys())
 	collWithAttachments = []
-	for key in messages:
+	for key in mb.keys():
 		msg = mb.get(key)
-		sender = re.search(r'<([\w\d\-\.]+@[\w\d\-\.]+)>', msg['From'], re.I).group(1)
-		print("Mail from: " + sender)
-		match = re.match(r'=\?utf-8\?B\?([\w\d]+)=\?=', msg['Subject'], re.I)
-		if match:
-		     print(match.group(0))
-		     subject = base64.b64decode(match.group(0).encode('ascii'))
-		else:
-		    subject = msg['Subject']
-		print("Subject: " + str(subject))
-		if not sender in validSenders:
-		     continue
-		names = validSubject.search(msg['Subject']).groupdict()
 
-		if names['reboot_flag']:
+		sender = emailFromHeader.search(msg['From']).group(1)
+		print("Mail from: " + sender)
+
+		content, encoding = email.header.decode_header(msg['Subject'])[0]
+		subject = content.decode(encoding)
+		print("Subject: " + subject)
+
+		if not sender in validSenders:
+			print("Invalid sender. Omitting.")
+			continue
+
+		names = validSubject.match(subject)
+
+		if not names:
+			print("Invalid subject. Omitting.")
+			continue
+
+		if names.groupdict()['reboot_flag']:
 			rebootFlag = True
 
-		print("Received message from " + sender + "reboot flag: " + str(names['reboot_flag']), end = "")
-		if names['collection']:
-			collectionName = names['collection']
+		print("Received message from " + sender + "reboot flag: " + str(names.groupdict()['reboot_flag']), end = "")
+		if names.groupdict()['collection']:
+			collectionName = names.groupdict()['collection'].strip()
 			print(", collection: " + collectionName)
 		else:
 			collectionName = ""
@@ -166,7 +182,7 @@ def checkAndGetAttachments(mailboxPath, validSenders = None):
 
 		attachments = extractAttachments(msg)
 		if len(attachments) > 0:
-			collWithAttachments.append(collectionName, attachments)
+			collWithAttachments.append((collectionName, attachments))
 		# remove the message from the mailbox
 		if not disableMailboxClearing:
 			mb.remove(key)
@@ -181,19 +197,19 @@ def convertAttachments(collectionDirectory, attachments):
 	filesChanged = []
 
 	withColl = lambda fileName: collectionDirectory + "_" + fileName
-	outputDir = os.path.join(config['DEFAULT']['output_directory'], collectionDirectory)
+	collectionDir = os.path.join(config['DEFAULT']['output_directory'], collectionDirectory)
 
-	temporaryDir = tempfile.mkdtemp()
+	temporaryDir = tempfile.mkdtemp('kindle')
 
 	# create collection directory if needed
-	if not os.path.exists(outputDir):
-		os.mkdir(outputDir)
+	if not os.path.exists(collectionDir):
+		os.mkdir(collectionDir)
 
 	# 'newName' is the name of the .mobi file
 	for (name, newName, data, conversion) in attachments:
 		if not conversion:
 			print('* ' + name)
-			with open(os.path.join(outputDir, name), 'wb') as f:
+			with open(os.path.join(collectionDir, name), 'wb') as f:
 				f.write(data)
 
 			filesChanged.append(name)
@@ -206,16 +222,18 @@ def convertAttachments(collectionDirectory, attachments):
 			# perform conversion
 			if not disableConversion:
 				changeNewName = eval(config['mobi_converter']['output_file'])
-				command = re.sub(r'%%OLD_NAME%%', name, config['mobi_converter']['command'])
-				command = re.sub(r'%%NEW_NAME%%', changeNewName(os.path.join(outputDir, newName)), command)
+				command = re.sub(r'@@OLD_NAME@@', tempFilePath, config['mobi_converter']['command'])
+				command = re.sub(r'@@NEW_NAME@@', changeNewName(os.path.join(tempFilePath, withColl(newName))), command)
+				print()
 				print(command)
 
 				with open("/dev/null", "w") as devNull:
-					ret = subprocess.call(command.split(), stdout = devNull, stderr = devNull)
+					ret = subprocess.call(command.split(), stdout = devNull)
 
-				if ret in map(lambda val: int(val.strip()), config['mobi_converter']['values_success'].split(';')):
+				valuesSuccess = [int(val.strip()) for val in config['mobi_converter']['values_success'].split(';')]
+				if ret in valuesSuccess:
 					print("OK.")
-					shutil.move(os.path.join(temporaryDir, withColl(newName)), os.path.join(outputDir, newName))
+					shutil.move(os.path.join(temporaryDir, withColl(newName)), os.path.join(collectionDir, newName))
 					filesChanged.append(newName)
 				else:
 					print("failed.")
@@ -223,7 +241,7 @@ def convertAttachments(collectionDirectory, attachments):
 			# remove original file
 			os.remove(tempFilePath)
 
-	os.rmdir(temporaryDir)
+	shutil.rmtree(temporaryDir)
 	return filesChanged
 
 def updateFilelist(collectionName, filesList, updateRebootFlag = False):
@@ -240,7 +258,7 @@ def updateFilelist(collectionName, filesList, updateRebootFlag = False):
 	timestamp = time.strftime("%Y-%m-%d_%H:%M:%S", time.localtime())
 
 	for f in filesList:
-		changes.set(sectionName, f, timestamp)
+		changes.set(collectionName, f, timestamp)
 
 	if updateRebootFlag:
 		changes['___SPECIAL___'] = {}
@@ -283,9 +301,11 @@ if config['DEFAULT']['check_senders']:
 
 fd = os.open(os.path.join(config['DEFAULT']['mailbox_path'], 'new'), os.O_RDONLY)
 
-fcntl.fcntl(fd, fcntl.F_NOTIFY, fcntl.DN_ACCESS | fcntl.DN_MODIFY | fcntl.DN_CREATE)
-signal.signal(signal.SIGIO, handler)
-
-while True:
-	signal.pause()
+if manualStart:
+	handler(None, None)
+else:
+	fcntl.fcntl(fd, fcntl.F_NOTIFY, fcntl.DN_ACCESS | fcntl.DN_MODIFY | fcntl.DN_CREATE)
+	signal.signal(signal.SIGIO, handler)
+	while True:
+		signal.pause()
 
