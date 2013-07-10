@@ -140,6 +140,7 @@ def checkAndGetAttachments(mailboxPath, validSenders = None):
 	and if matches, the collWithAttachments are returned."""
 
 	rebootFlag = False
+	noFiles = 0
 
 	# initialize mailbox
 	mb = mailbox.Maildir(mailboxPath)
@@ -153,13 +154,16 @@ def checkAndGetAttachments(mailboxPath, validSenders = None):
 		msg = mb.get(key)
 
 		sender = emailFromHeader.search(msg['From']).group(1)
-		print("Mail from: " + sender)
 
 		content, encoding = email.header.decode_header(msg['Subject'])[0]
-		subject = content.decode(encoding)
-		print("Subject: " + subject)
+		if isinstance(content, str):
+		     subject = content
+		else:
+		     subject = content.decode(encoding)
 
-		if not sender in validSenders:
+		print("From: <" + sender + ">, Subject: '" + subject + "'")
+
+		if validSenders is not None and not sender in validSenders:
 			print("Invalid sender. Omitting.")
 			continue
 
@@ -169,27 +173,27 @@ def checkAndGetAttachments(mailboxPath, validSenders = None):
 			print("Invalid subject. Omitting.")
 			continue
 
-		if names.groupdict()['reboot_flag']:
+		if names.groupdict()['reboot_flag'] and names.groupdict()['collection']:
 			rebootFlag = True
+			print("Reboot flag updated.");
 
-		print("Received message from " + sender + "reboot flag: " + str(names.groupdict()['reboot_flag']), end = "")
 		if names.groupdict()['collection']:
 			collectionName = names.groupdict()['collection'].strip()
-			print(", collection: " + collectionName)
+			print("Collection: " + collectionName)
 		else:
 			collectionName = ""
-			print()
 
 		attachments = extractAttachments(msg)
 		if len(attachments) > 0:
 			collWithAttachments.append((collectionName, attachments))
+			noFiles += len(attachments)
 		# remove the message from the mailbox
 		if not disableMailboxClearing:
 			mb.remove(key)
 
 	mb.close()
 
-	return (rebootFlag, collWithAttachments)
+	return (noFiles, rebootFlag, collWithAttachments)
 
 
 def convertAttachments(collectionDirectory, attachments):
@@ -246,9 +250,11 @@ def updateFilelist(collectionName, filesList, updateRebootFlag = False):
 	# TODO TODO TODO tylko to zostało
 	# update the changes list
 	global config
+	if collectionName == "":
+	     collectionName = "___NO_COLLECTION___"
 
 	changes = configparser.SafeConfigParser()
-	changes.read(os.path.join(config['DEFAULT']['mailbox_path'], metadataFileName))
+	changes.read(os.path.join(config['DEFAULT']['output_directory'], metadataFileName))
 
 	if not changes.has_section(collectionName):
 		changes.add_section(collectionName)
@@ -262,7 +268,7 @@ def updateFilelist(collectionName, filesList, updateRebootFlag = False):
 		changes['___SPECIAL___'] = {}
 		changes['___SPECIAL___']['RestartTimeStamp'] = timestamp;
 
-	with open(os.path.join(config['DEFAULT']['mailbox_path'], metadataFileName), 'w') as configfile:
+	with open(os.path.join(config['DEFAULT']['output_directory'], metadataFileName), 'w') as configfile:
 	    changes.write(configfile)
 
 def handler(signum, frame):
@@ -271,11 +277,11 @@ def handler(signum, frame):
 	global config
 	global validSenders
 
-	rebootFlag, collWithAttachments = checkAndGetAttachments(config['DEFAULT']['mailbox_path'], validSenders)
-	if len(collWithAttachments) == 0:
+	noFiles, rebootFlag, collWithAttachments = checkAndGetAttachments(config['DEFAULT']['mailbox_path'], validSenders)
+	if noFiles == 0:
 		print("No new files.")
 		return
-	print(str(len(collWithAttachments)) + " new files.")
+	print(str(noFiles) + " new files.")
 
 	for collectionName, attachments in collWithAttachments:
 		changeList = convertAttachments(convertToFileName(collectionName), attachments)
@@ -295,7 +301,7 @@ config = getConfiguration(sys.argv[1] if len(sys.argv) > 1 else None)
 
 validSenders = None
 if config['DEFAULT']['check_senders']:
-	 validSenders = map(lambda s: s.strip(), config['DEFAULT']['valid_senders'].split(';'))
+	 validSenders = [s.strip() for s in config['DEFAULT']['valid_senders'].split(';')]
 
 fd = os.open(os.path.join(config['DEFAULT']['mailbox_path'], 'new'), os.O_RDONLY)
 
