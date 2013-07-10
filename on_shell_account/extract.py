@@ -30,7 +30,7 @@ configFileName = "extract.ini"
 # for debug & development
 disableConversion = False
 disableMailboxClearing = False
-manualStart = True
+manualStart = False
 
 __version__ = '1.1'
 __author__ = 'Michał Słomkowski'
@@ -224,8 +224,6 @@ def convertAttachments(collectionDirectory, attachments):
 				changeNewName = eval(config['mobi_converter']['output_file'])
 				command = re.sub(r'@@OLD_NAME@@', tempFilePath, config['mobi_converter']['command'])
 				command = re.sub(r'@@NEW_NAME@@', changeNewName(os.path.join(tempFilePath, withColl(newName))), command)
-				print()
-				print(command)
 
 				with open("/dev/null", "w") as devNull:
 					ret = subprocess.call(command.split(), stdout = devNull)
