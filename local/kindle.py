@@ -32,7 +32,10 @@ metadataFileName = "FILELIST"
 mobiConverter = {
 		'command' : 'ebook-convert %%OLD_NAME%% %%NEW_NAME%%',
 		# TODO check values_success
-		'values_success' : (0, 1)
+		'values_success' : (0, 1),
+		# Kindlegen needs only filename, without full path as the output file. Use basename in this case.
+		'output_file' : lambda filePath: filePath
+		# 'output_file' : lambda filePath: os.path.basename(filePath)
 		}
 
 # formats which will be added to the library. Other files are omitted. The boolean value indicates the need to convert it to .mobi format.
@@ -104,11 +107,10 @@ def convertFiles(fileList, outputDir):
 			sys.stdout.flush()
 
 			command = re.sub(r'%%OLD_NAME%%', name, mobiConverter['command'])
-			command = re.sub(r'%%NEW_NAME%%', os.path.join(outputDir, newName), command)
+			command = re.sub(r'%%NEW_NAME%%', mobiConverter['output_file'](os.path.join(outputDir, newName)), command)
 
-			devNull = open("/dev/null", "w")
-			ret = subprocess.call(command.split(), stdout = devNull, stderr = devNull)
-			devNull.close()
+			with open("/dev/null", "w") as devNull:
+				ret = subprocess.call(command.split(), stdout = devNull, stderr = devNull)
 
 			if ret in mobiConverter['values_success']:
 				print("  OK.")

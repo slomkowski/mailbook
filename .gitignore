@@ -1,4 +1,5 @@
 on_kindle/libupdate.ini
+on_shell_account/extract.ini
 
 *.py[cod]
 
