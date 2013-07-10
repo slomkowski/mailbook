@@ -36,7 +36,7 @@ __author__ = 'Michał Słomkowski'
 __copyright__ = 'GNU GPL v.3.0'
 
 # CODE
-import mailbox, re, unicodedata, os, configparser, time, subprocess, shutil, tempfile, fcntl, signal, sys
+import mailbox, re, unicodedata, os, configparser, time, subprocess, shutil, tempfile, fcntl, signal, sys, base64
 
 def convertToFileName(originalFileName):
 	"""Removes spaces and special characters from the file name."""
@@ -70,7 +70,7 @@ def getConfiguration(configFile = None):
 		print >> sys.stderr, ("Error at loading configuration file.")
 		sys.exit(1)
 
-	return conf['DEFAULT']
+	return conf
 
 def extractAttachments(message):
 	"""Takes Message instance and returns the list of tuples (fileName, newName, fileData, performConversion)
@@ -132,23 +132,31 @@ def checkAndGetAttachments(mailboxPath, validSenders = None):
 	mb = mailbox.Maildir(mailboxPath)
 
 	validSubject = re.compile(r'^\s*(kindle)(?P<reboot_flag>-reboot)?(:\s*(?P<collection>\w+))?\s*$', re.I)
+	messages = mb.keys()
 
 	# get the messages with valid subject
 	# messages = [ (msg, mb.get(msg)) for msg in mb.keys() if validSubject.match(mb.get(msg)['Subject']) ]
-	messages = filter(lambda msg: validSubject.match(mb.get(msg)['Subject']), mb.keys())
-	# TODO add sender recognition
-	if validSenders is not None:
-		messagess = filter(lambda msg: mb.get(msg)['From'].strip() in validSenders, messages)
-
+	#messages = filter(lambda msg: validSubject.match(mb.get(msg)['Subject']), mb.keys())
 	collWithAttachments = []
 	for key in messages:
 		msg = mb.get(key)
-		names = validSubject.match(msg['Subject']).groupdict()
+		sender = re.search(r'<([\w\d\-\.]+@[\w\d\-\.]+)>', msg['From'], re.I).group(1)
+		print("Mail from: " + sender)
+		match = re.match(r'=\?utf-8\?B\?([\w\d]+)=\?=', msg['Subject'], re.I)
+		if match:
+		     print(match.group(0))
+		     subject = base64.b64decode(match.group(0).encode('ascii'))
+		else:
+		    subject = msg['Subject']
+		print("Subject: " + str(subject))
+		if not sender in validSenders:
+		     continue
+		names = validSubject.search(msg['Subject']).groupdict()
 
 		if names['reboot_flag']:
 			rebootFlag = True
 
-		print("Received message from " + msg['From'] + "reboot flag: " + names['reboot_flag'], end = "")
+		print("Received message from " + sender + "reboot flag: " + str(names['reboot_flag']), end = "")
 		if names['collection']:
 			collectionName = names['collection']
 			print(", collection: " + collectionName)
