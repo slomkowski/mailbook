@@ -52,7 +52,10 @@ def convertToFileName(original):
 	"""
 	# changes languages-specific characters
 	# uniString = unicode(original, 'utf-8', 'ignore')
-	out = unicodedata.normalize('NFKD', original)
+	if isinstance(original, str):
+		out = original
+	else:
+		out = unicodedata.normalize('NFKD', original)
 	# change spaces
 	out = re.sub(" ", "_", out)
 	out = re.sub(r'[^\.\w\d\-]', '', out)
