@@ -4,6 +4,7 @@
 Mailbook - equivalent for 'Send to Kindle' feature. Script for local PC.
 
 (C) 2012, 2013 Michał Słomkowski m.slomkowski@gmail.com
+https://github.com/slomkowski/mailbook
 
 """
 

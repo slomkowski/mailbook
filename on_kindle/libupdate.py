@@ -2,9 +2,10 @@
 # -*- coding: utf-8 -*-
 """
 Mailbook - equivalent for 'Send to Kindle' feature. Script for Kindle 2, 3 and DX. You need Python 2.7 installed
-to make it work.
+to make it work. Installation is described here: http://www.mobileread.com/forums/showthread.php?t=153930
 
 (C) 2013 Michał Słomkowski m.slomkowski@gmail.com
+https://github.com/slomkowski/mailbook
 
 """
 
