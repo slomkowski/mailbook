@@ -147,7 +147,7 @@ def checkAndGetAttachments(mailboxPath, validSenders = None):
 	mb = mailbox.Maildir(mailboxPath)
 
 	validSubject = re.compile(r'^\s*(kindle)(?P<reboot_flag>-reboot)?(:\s*(?P<collection>[\w\d\- ]+))?\s*$', re.I)
-	emailFromHeader = re.compile(r'<([\w\d\-\.]+@[\w\d\-\.]+)>', re.I)
+	emailFromHeader = re.compile(r'([\w\d\-\.]+@[\w\d\-\.]+)', re.I)
 
 	# get the messages with valid subject
 	collWithAttachments = []
@@ -273,7 +273,7 @@ def updateFilelist(collectionName, filesList, updateRebootFlag = False):
 	    changes.write(configfile)
 
 def handler(signum, frame):
-	"""The handler is called after each change in the mailbox directory. Checks the 
+	"""The handler is called after each change in the mailbox directory. Checks the
 	"""
 	global config
 	global validSenders
