@@ -1,6 +1,9 @@
 on_kindle/libupdate.ini
 on_shell_account/extract.ini
 
+on_shell_account/kindlegen
+on_shell_account/mailbox
+
 *.py[cod]
 
 # C extensions

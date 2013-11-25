@@ -134,7 +134,7 @@ def computeHashEntry(fileName):
 	if m is not None:
 		hashEntry = '#' + m.group('asin') + '^' + m.group('type')
 	else:
-		hashEntry = '*' + hashlib.sha1(fileName.encode('utf-8')).hexdigest()
+		hashEntry = '*' + hashlib.sha1(fileName).hexdigest()
 
 	# try find asin in file
 	if fileName.lower().endswith('.mobi'):
