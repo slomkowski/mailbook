@@ -3,7 +3,7 @@
 """
 Script which monitors the Unix mailbox, extracts the messagess with ebook attachements and converts them to .mobi format.
 
-(C) 2012 Michał Słomkowski m.slomkowski@gmail.com
+(C) 2012 Michał Słomkowski
 https://github.com/slomkowski/mailbook
 
 """
